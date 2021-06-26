@@ -14,8 +14,9 @@ namespace ECS
 			m_FreeEntityIndecies.pop_back();
 
 			EntityID _NewID{ _Index, m_Entities[_Index].ID.Version };
-		}
 
+			return _NewID;
+		}
 
 		m_Entities.emplace_back(EntityDesc{ m_CurrentEntityID, ComponentMask{} });
 		return m_CurrentEntityID++;

@@ -15,12 +15,14 @@ namespace ECS
 
 	using ComponentMask = std::bitset<32>;
 
+	extern size_t gComponentIDCounter;
+
 	struct EntityID
 	{
 		EntityIndex Index;
 		EntityVersion Version;
 
-		explicit operator uint64_t()
+		explicit operator uint64_t() const
 		{
 			return (static_cast<uint64_t>(Index) << 32) | Version;
 		}
@@ -40,12 +42,14 @@ namespace ECS
 
 		bool operator==(const EntityID& _ID)
 		{
-			return (Index == _ID.Index && Version == _ID.Version);
+			return static_cast<uint64_t>(*this) == static_cast<uint64_t>(_ID);
+		}
+
+		bool operator!=(const EntityID& _ID)
+		{
+			return static_cast<uint64_t>(*this) != static_cast<uint64_t>(_ID);
 		}
 	};
-
-
-	extern size_t gComponentIDCounter;
 
 
 	class ComponentPool final
@@ -111,6 +115,15 @@ namespace ECS
 	{
 	public:
 
+		Scene() = default;
+		~Scene() = default;
+
+		Scene(const Scene&) = delete;
+		Scene& operator=(const Scene&) = delete;
+
+		Scene(Scene&&) noexcept = default;
+		Scene& operator=(Scene&&) noexcept = default;
+
 		struct EntityDesc
 		{
 			EntityID ID;
@@ -126,52 +139,57 @@ namespace ECS
 			return static_ComponentID;
 		}
 
+
+		bool IsEntityValid(EntityID _EntityID)
+		{
+			return m_Entities[_EntityID.Index].ID == _EntityID;
+		}
+
+
 		template<class T, typename... Args>
 		void Assign(EntityID _EntityID, Args... _Args)
 		{
 
-			size_t ComponentID = GetID<T>;
-			if (ComponentID >= m_ComponentPools.size())
+			size_t _ComponentID = GetID<T>();
+			if (_ComponentID >= m_ComponentPools.size())
 			{
-				m_ComponentPools.resize(ComponentID + 1, nullptr);
+				m_ComponentPools.resize(_ComponentID + 1);
 			}
-			if (m_ComponentPools[ComponentID] == nullptr)
+			if (m_ComponentPools[_ComponentID] == nullptr)
 			{
-				m_ComponentPools[ComponentID].reset(new ComponentPool(sizeof(T)));
+				m_ComponentPools[_ComponentID].reset(new ComponentPool(sizeof(T)));
 			}
 
-			ComponentPool* _ComponentPool = m_ComponentPools[ComponentID].get();
+			ComponentPool* _ComponentPool = m_ComponentPools[_ComponentID].get();
 
-			T* _NewComponent = new (_ComponentPool->Add()) T(std::forward<Args>(_Args)...);
+			T* _NewComponent = new (_ComponentPool->Get(_EntityID.Index)) T(std::forward<Args>(_Args)...);
 
-			m_Entities[_EntityID].Masks.set(GetID<T>, true);
+			m_Entities[_EntityID.Index].Masks.set(_ComponentID, true);
 		}
 
 		template<class T>
-		void Remove(EntityID _ID)
+		void Remove(EntityID _EntityID)
 		{
 
-			EntityIndex _Index = GetEntityIndex(_ID);
-			if (m_Entities[_Index].ID != _ID)
+			if (!IsEntityValid(_EntityID))
 			{
-				assert(false, "The entity attempting to assign the component is invalid");
+				assert(false);
 				return; // The EntityID is invalid. It's been probably deleted
 			}
 
-			m_Entities[_Index].Masks.reset(GetID<T>());
-
+			m_Entities[_EntityID.Index].Masks.reset(GetID<T>());
 		}
 
 		void DestroyEntity(EntityID _ID)
 		{
-			//m_Entities[_ID.Index].ID.Index = -1; // I doubt it's necessary to set the Index -1. the version modifying probably is fine.
+			//m_Entities[_ID.Index].ID.Index = -1; // I doubt it's necessary to set the Index -1. the version modifying probably is just enough.
 			m_Entities[_ID.Index].ID.Version += 1;
 			m_Entities[_ID.Index].Masks.reset();
-			m_FreeEntityIndecies[_ID.Index];
+			m_FreeEntityIndecies.emplace_back(_ID.Index);
 		}
 
 	private:
-		EntityID m_CurrentEntityID;
+		EntityID m_CurrentEntityID{ 0, 0 };
 
 		std::vector<EntityDesc> m_Entities;
 
