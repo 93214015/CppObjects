@@ -139,10 +139,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="ComponentPool.cpp" />
     <ClCompile Include="ECS.cpp" />
     <ClCompile Include="EntityComponentSystem.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ComponentPool.h" />
     <ClInclude Include="ECS.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -5,6 +5,7 @@
 #include <memory>
 #include <assert.h>
 
+#include "ComponentPool.h"
 
 
 namespace ECS
@@ -12,10 +13,10 @@ namespace ECS
 
 	using EntityIndex = uint32_t;
 	using EntityVersion = uint32_t;
-
 	using ComponentMask = std::bitset<32>;
 
 	extern size_t gComponentIDCounter;
+
 
 	struct EntityID
 	{
@@ -50,65 +51,7 @@ namespace ECS
 			return static_cast<uint64_t>(*this) != static_cast<uint64_t>(_ID);
 		}
 	};
-
-
-	class ComponentPool final
-	{
-	public:
-		ComponentPool(size_t _ComponentSize)
-			: m_ComponentSize(_ComponentSize), m_PoolSize(0)
-		{
-			m_Data = new char[_ComponentSize * MAX_COMPONENTS];
-		}
-
-		//Copy Contructors are deleted
-		ComponentPool(const ComponentPool&) = delete;
-		ComponentPool& operator=(const ComponentPool&) = delete;
-
-		//Move Constructor
-		ComponentPool(ComponentPool&& _ComponentPool) noexcept
-			: m_Data(_ComponentPool.m_Data), m_ComponentSize(_ComponentPool.m_ComponentSize), m_PoolSize(_ComponentPool.m_PoolSize)
-		{
-			_ComponentPool.m_Data = nullptr;
-			_ComponentPool.m_PoolSize = 0;
-		}
-
-		ComponentPool& operator=(ComponentPool&& _ComponentPool) noexcept
-		{
-			m_Data = _ComponentPool.m_Data;
-			m_ComponentSize = _ComponentPool.m_ComponentSize;
-			m_PoolSize = _ComponentPool.m_PoolSize;
-
-			_ComponentPool.m_Data = nullptr;
-			_ComponentPool.m_PoolSize = 0;
-
-		}
-
-
-		~ComponentPool()
-		{
-			delete[] m_Data;
-		}
-
-		void* Get(size_t _Index)
-		{
-			return m_Data + (_Index * m_ComponentSize);
-		}
-
-		void* Add()
-		{
-			void* _NewPtr = m_Data + (m_PoolSize * m_ComponentSize);
-			m_PoolSize++;
-			return _NewPtr;
-		}
-
-	private:
-		char* m_Data;
-		size_t m_ComponentSize;
-		size_t m_PoolSize;
-
-		static constexpr size_t MAX_COMPONENTS = 1024;
-	};
+	
 
 
 	class Scene
@@ -196,6 +139,95 @@ namespace ECS
 		std::vector<EntityIndex> m_FreeEntityIndecies;
 
 		std::vector<std::unique_ptr<ComponentPool>> m_ComponentPools;
+
+		template<class... Ts>
+		friend struct SceneView;
+	};
+
+
+	template<class... Ts>
+	struct SceneView
+	{
+		struct Iterator
+		{
+			Iterator(Scene* _Scene, size_t _Index, ComponentMask _ComponentMask)
+				: m_Scene(_Scene), m_Index(_Index), m_ComponentMask(_ComponentMask)
+			{}
+
+			EntityID operator*() const
+			{
+				return m_Scene->m_Entities[m_Index].ID;
+			}
+
+			bool operator==(const Iterator& _OtherIterator)
+			{
+				return m_Index == _OtherIterator.m_Index;
+			}
+
+			bool operator!=(const Iterator& _OtherIterator)
+			{
+				return m_Index != _OtherIterator.m_Index;
+			}
+
+			Iterator& operator++()
+			{
+				do
+				{
+					m_Index++;
+
+				} while (m_Index < m_Scene->m_Entities.size() && !IsValidIndex(m_Index));
+
+				return *this;
+			}
+			
+		private:
+
+			inline bool IsValidIndex(size_t _Index) const
+			{
+				const Scene::EntityDesc& _EntityDesc = m_Scene->m_Entities[_Index];
+				return _EntityDesc.ID.Index != -1 && ( (m_ComponentMask == 0) || (m_ComponentMask == (m_ComponentMask & _EntityDesc.Masks)) );
+			}
+
+		private:
+			Scene* m_Scene;
+			size_t m_Index;
+			ComponentMask m_ComponentMask;
+
+		};
+
+		SceneView(Scene* _Scene)
+			: m_Scene(_Scene)
+		{
+			for (size_t i = 0; i < sizeof...(Ts); ++i)
+			{
+				m_ComponentMask.set(i, true);
+			}
+		}
+
+		Iterator begin() const
+		{
+			size_t _Index = 0;
+
+			const auto& _Entities = m_Scene->m_Entities;
+
+			while (_Index < _Entities.size() && (_Entities[_Index].ID.Index == -1 || (m_ComponentMask != 0 && _Entities[_Index].Masks != m_ComponentMask)))
+			{
+				_Index++;
+			}
+
+
+			return Iterator(m_Scene, _Index, m_ComponentMask);
+		}
+
+		Iterator end() const
+		{
+			return Iterator(m_Scene, m_Scene->m_Entities.size(), m_ComponentMask);
+		}
+
+
+	private:
+		Scene* m_Scene;
+		ComponentMask m_ComponentMask;
 	};
 
 

@@ -26,13 +26,15 @@ int main()
     _Scene.Assign<ComponentA>(_Entity1);
     _Scene.Assign<ComponentB>(_Entity1);
 
-    _Scene.Remove<ComponentA>(_Entity1);
-
-    _Scene.DestroyEntity(_Entity1);
-
-
     auto _Entity3 = _Scene.CreateEntity();
     _Scene.Assign<ComponentB>(_Entity3);
+
+    ECS::SceneView<> _SceneView(&_Scene);
+
+    for (auto EntityID : _SceneView)
+    {
+        std::cout << EntityID.Index;
+    }
 
 
     std::cout << "Hello World!\n";
