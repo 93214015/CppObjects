@@ -43,12 +43,12 @@ namespace ECS
 
 		bool operator==(const EntityID& _ID)
 		{
-			return static_cast<uint64_t>(*this) == static_cast<uint64_t>(_ID);
+			return (Index == _ID.Index && Version == _ID.Version);
 		}
 
 		bool operator!=(const EntityID& _ID)
 		{
-			return static_cast<uint64_t>(*this) != static_cast<uint64_t>(_ID);
+			return (Index != _ID.Index || Version != _ID.Version);
 		}
 	};
 	
@@ -73,12 +73,104 @@ namespace ECS
 			ComponentMask Masks;
 		};
 
+		template<class... Ts>
+		struct SceneView
+		{
+			struct Iterator
+			{
+				Iterator(Scene* _Scene, size_t _Index, ComponentMask _ComponentMask)
+					: m_Scene(_Scene), m_Index(_Index), m_ComponentMask(_ComponentMask)
+				{}
+
+				EntityID operator*() const
+				{
+					return m_Scene->m_Entities[m_Index].ID;
+				}
+
+				bool operator==(const Iterator& _OtherIterator)
+				{
+					return m_Index == _OtherIterator.m_Index;
+				}
+
+				bool operator!=(const Iterator& _OtherIterator)
+				{
+					return m_Index != _OtherIterator.m_Index;
+				}
+
+				Iterator& operator++()
+				{
+					do
+					{
+						m_Index++;
+
+					} while (m_Index < m_Scene->m_Entities.size() && !IsValidIndex(m_Index));
+
+					return *this;
+				}
+
+			private:
+
+				inline bool IsValidIndex(size_t _Index) const
+				{
+					const Scene::EntityDesc& _EntityDesc = m_Scene->m_Entities[_Index];
+					return _EntityDesc.ID.Index != -1 && ((m_ComponentMask == 0) || (m_ComponentMask == (m_ComponentMask & _EntityDesc.Masks)));
+				}
+
+			private:
+				Scene* m_Scene;
+				size_t m_Index;
+				ComponentMask m_ComponentMask;
+
+			};
+
+			SceneView(Scene* _Scene)
+				: m_Scene(_Scene)
+			{
+				size_t _ComponentIDs[] = {0, _Scene->GetID<Ts>()...};
+
+				for (size_t i = 1; i <= sizeof...(Ts); ++i)
+				{
+					m_ComponentMask.set(_ComponentIDs[i], true);
+				}
+			}
+
+			Iterator begin() const
+			{
+				size_t _Index = 0;
+
+				const auto& _Entities = m_Scene->m_Entities;
+
+				while (_Index < _Entities.size() && (_Entities[_Index].ID.Index == -1 || (m_ComponentMask != 0 && m_ComponentMask != (_Entities[_Index].Masks & m_ComponentMask) ) ))
+				{
+					_Index++;
+				}
+
+				return Iterator(m_Scene, _Index, m_ComponentMask);
+			}
+
+			Iterator end() const
+			{
+				return Iterator(m_Scene, m_Scene->m_Entities.size(), m_ComponentMask);
+			}
+
+
+		private:
+			Scene* m_Scene;
+			ComponentMask m_ComponentMask;
+		};
+
 		EntityID CreateEntity();
+
+		template<class... Ts>
+		SceneView<Ts...> View()
+		{
+			return SceneView<Ts...>(this);
+		}
 
 		template<class T>
 		size_t GetID()
 		{
-			static size_t static_ComponentID = gComponentIDCounter++;
+			static const size_t static_ComponentID = gComponentIDCounter++;
 			return static_ComponentID;
 		}
 
@@ -88,6 +180,18 @@ namespace ECS
 			return m_Entities[_EntityID.Index].ID == _EntityID;
 		}
 
+		template<class T>
+		T* Get(EntityID _EntityID)
+		{
+			static const size_t _ComponentID = GetID<T>();
+			if (!m_Entities[_EntityID.Index].Masks.test(_ComponentID))
+			{
+				return nullptr;
+			}
+
+
+			return static_cast<T*>(m_EntityComponents[_ComponentID][_EntityID.Index]);
+		}
 
 		template<class T, typename... Args>
 		void Assign(EntityID _EntityID, Args... _Args)
@@ -96,11 +200,14 @@ namespace ECS
 			size_t _ComponentID = GetID<T>();
 			if (_ComponentID >= m_ComponentPools.size())
 			{
-				m_ComponentPools.resize(_ComponentID + 1);
+				size_t _NewSize = _ComponentID + 1;
+				m_ComponentPools.resize(_NewSize);
+				m_EntityComponents.resize(_NewSize);
 			}
 			if (m_ComponentPools[_ComponentID] == nullptr)
 			{
 				m_ComponentPools[_ComponentID].reset(new ComponentPool(sizeof(T)));
+				m_EntityComponents[_ComponentID].resize(1024, nullptr);
 			}
 
 			ComponentPool* _ComponentPool = m_ComponentPools[_ComponentID].get();
@@ -108,6 +215,8 @@ namespace ECS
 			T* _NewComponent = new (_ComponentPool->Get(_EntityID.Index)) T(std::forward<Args>(_Args)...);
 
 			m_Entities[_EntityID.Index].Masks.set(_ComponentID, true);
+			m_EntityComponents[_ComponentID][_EntityID.Index] = _NewComponent;
+
 		}
 
 		template<class T>
@@ -125,7 +234,7 @@ namespace ECS
 
 		void DestroyEntity(EntityID _ID)
 		{
-			//m_Entities[_ID.Index].ID.Index = -1; // I doubt it's necessary to set the Index -1. the version modifying probably is just enough.
+			m_Entities[_ID.Index].ID.Index = -1;
 			m_Entities[_ID.Index].ID.Version += 1;
 			m_Entities[_ID.Index].Masks.reset();
 			m_FreeEntityIndecies.emplace_back(_ID.Index);
@@ -140,95 +249,14 @@ namespace ECS
 
 		std::vector<std::unique_ptr<ComponentPool>> m_ComponentPools;
 
+		std::vector<std::vector<void*>> m_EntityComponents;
+
 		template<class... Ts>
 		friend struct SceneView;
 	};
 
 
-	template<class... Ts>
-	struct SceneView
-	{
-		struct Iterator
-		{
-			Iterator(Scene* _Scene, size_t _Index, ComponentMask _ComponentMask)
-				: m_Scene(_Scene), m_Index(_Index), m_ComponentMask(_ComponentMask)
-			{}
-
-			EntityID operator*() const
-			{
-				return m_Scene->m_Entities[m_Index].ID;
-			}
-
-			bool operator==(const Iterator& _OtherIterator)
-			{
-				return m_Index == _OtherIterator.m_Index;
-			}
-
-			bool operator!=(const Iterator& _OtherIterator)
-			{
-				return m_Index != _OtherIterator.m_Index;
-			}
-
-			Iterator& operator++()
-			{
-				do
-				{
-					m_Index++;
-
-				} while (m_Index < m_Scene->m_Entities.size() && !IsValidIndex(m_Index));
-
-				return *this;
-			}
-			
-		private:
-
-			inline bool IsValidIndex(size_t _Index) const
-			{
-				const Scene::EntityDesc& _EntityDesc = m_Scene->m_Entities[_Index];
-				return _EntityDesc.ID.Index != -1 && ( (m_ComponentMask == 0) || (m_ComponentMask == (m_ComponentMask & _EntityDesc.Masks)) );
-			}
-
-		private:
-			Scene* m_Scene;
-			size_t m_Index;
-			ComponentMask m_ComponentMask;
-
-		};
-
-		SceneView(Scene* _Scene)
-			: m_Scene(_Scene)
-		{
-			for (size_t i = 0; i < sizeof...(Ts); ++i)
-			{
-				m_ComponentMask.set(i, true);
-			}
-		}
-
-		Iterator begin() const
-		{
-			size_t _Index = 0;
-
-			const auto& _Entities = m_Scene->m_Entities;
-
-			while (_Index < _Entities.size() && (_Entities[_Index].ID.Index == -1 || (m_ComponentMask != 0 && _Entities[_Index].Masks != m_ComponentMask)))
-			{
-				_Index++;
-			}
-
-
-			return Iterator(m_Scene, _Index, m_ComponentMask);
-		}
-
-		Iterator end() const
-		{
-			return Iterator(m_Scene, m_Scene->m_Entities.size(), m_ComponentMask);
-		}
-
-
-	private:
-		Scene* m_Scene;
-		ComponentMask m_ComponentMask;
-	};
+	
 
 
 }

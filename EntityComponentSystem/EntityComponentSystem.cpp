@@ -29,11 +29,11 @@ int main()
     auto _Entity3 = _Scene.CreateEntity();
     _Scene.Assign<ComponentB>(_Entity3);
 
-    ECS::SceneView<> _SceneView(&_Scene);
+    auto _SceneView = _Scene.View<ComponentB>();
 
     for (auto EntityID : _SceneView)
     {
-        std::cout << EntityID.Index;
+        std::cout << EntityID.Index << "\n";
     }
 
 

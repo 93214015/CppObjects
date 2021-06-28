@@ -8,6 +8,7 @@ namespace ECS
 
 	EntityID Scene::CreateEntity()
 	{
+
 		if (!m_FreeEntityIndecies.empty())
 		{
 			EntityIndex _Index = m_FreeEntityIndecies.back();
