@@ -29,6 +29,8 @@ int main()
     auto _Entity3 = _Scene.CreateEntity();
     _Scene.Assign<ComponentB>(_Entity3);
 
+    auto _ComponentA = _Scene.Get<ComponentA>(_Entity1);
+
     auto _SceneView = _Scene.View<ComponentB>();
 
     for (auto EntityID : _SceneView)

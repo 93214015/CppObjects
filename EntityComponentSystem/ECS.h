@@ -41,12 +41,12 @@ namespace ECS
 			return _Old;
 		}
 
-		bool operator==(const EntityID& _ID)
+		bool operator==(const EntityID& _ID) const
 		{
 			return (Index == _ID.Index && Version == _ID.Version);
 		}
 
-		bool operator!=(const EntityID& _ID)
+		bool operator!=(const EntityID& _ID) const
 		{
 			return (Index != _ID.Index || Version != _ID.Version);
 		}
@@ -67,11 +67,13 @@ namespace ECS
 		Scene(Scene&&) noexcept = default;
 		Scene& operator=(Scene&&) noexcept = default;
 
+
 		struct EntityDesc
 		{
 			EntityID ID;
 			ComponentMask Masks;
 		};
+
 
 		template<class... Ts>
 		struct SceneView
@@ -87,12 +89,12 @@ namespace ECS
 					return m_Scene->m_Entities[m_Index].ID;
 				}
 
-				bool operator==(const Iterator& _OtherIterator)
+				bool operator==(const Iterator& _OtherIterator) const
 				{
 					return m_Index == _OtherIterator.m_Index;
 				}
 
-				bool operator!=(const Iterator& _OtherIterator)
+				bool operator!=(const Iterator& _OtherIterator) const
 				{
 					return m_Index != _OtherIterator.m_Index;
 				}
@@ -159,7 +161,9 @@ namespace ECS
 			ComponentMask m_ComponentMask;
 		};
 
+
 		EntityID CreateEntity();
+
 
 		template<class... Ts>
 		SceneView<Ts...> View()
@@ -167,21 +171,23 @@ namespace ECS
 			return SceneView<Ts...>(this);
 		}
 
+
 		template<class T>
-		size_t GetID()
+		size_t GetID() const
 		{
 			static const size_t static_ComponentID = gComponentIDCounter++;
 			return static_ComponentID;
 		}
 
 
-		bool IsEntityValid(EntityID _EntityID)
+		bool IsEntityValid(EntityID _EntityID) const
 		{
 			return m_Entities[_EntityID.Index].ID == _EntityID;
 		}
 
+
 		template<class T>
-		T* Get(EntityID _EntityID)
+		T* Get(EntityID _EntityID) const
 		{
 			static const size_t _ComponentID = GetID<T>();
 			if (!m_Entities[_EntityID.Index].Masks.test(_ComponentID))
@@ -192,6 +198,7 @@ namespace ECS
 
 			return static_cast<T*>(m_EntityComponents[_ComponentID][_EntityID.Index]);
 		}
+
 
 		template<class T, typename... Args>
 		void Assign(EntityID _EntityID, Args... _Args)
@@ -219,6 +226,7 @@ namespace ECS
 
 		}
 
+
 		template<class T>
 		void Remove(EntityID _EntityID)
 		{
@@ -231,6 +239,7 @@ namespace ECS
 
 			m_Entities[_EntityID.Index].Masks.reset(GetID<T>());
 		}
+
 
 		void DestroyEntity(EntityID _ID)
 		{
